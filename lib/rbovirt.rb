@@ -39,7 +39,7 @@ module OVIRT
 
   class Client
 
-    attr_reader :credentials, :api_entrypoint, :datacenter_id, :cluster_id, :filtered_api, :ca_cert_file, :ca_cert_store, :ca_no_verify
+    attr_reader :credentials, :api_entrypoint, :datacenter_id, :cluster_id, :filtered_api, :ca_cert_file, :ca_cert_store, :ca_no_verify, :persistent_auth, :jsessionid
 
     # Construct a new ovirt client class.
     # mandatory parameters
@@ -61,14 +61,16 @@ module OVIRT
                    :cluster_id => backward_compatibility_cluster,
                    :filtered_api => backward_compatibility_filtered}
       end
-      @api_entrypoint = api_entrypoint
-      @credentials    = { :username => username, :password => password }
-      @datacenter_id  = options[:datacenter_id]
-      @cluster_id     = options[:cluster_id]
-      @filtered_api   = options[:filtered_api]
-      @ca_cert_file   = options[:ca_cert_file]
-      @ca_cert_store  = options[:ca_cert_store]
-      @ca_no_verify   = options[:ca_no_verify]
+      @api_entrypoint  = api_entrypoint
+      @credentials     = { :username => username, :password => password }
+      @datacenter_id   = options[:datacenter_id]
+      @cluster_id      = options[:cluster_id]
+      @filtered_api    = options[:filtered_api]
+      @ca_cert_file    = options[:ca_cert_file]
+      @ca_cert_store   = options[:ca_cert_store]
+      @ca_no_verify    = options[:ca_no_verify]
+      @persistent_auth = options[:persistent_auth]
+      @jsessionid      = options[:jsessionid]
     end
 
     def api_version
@@ -102,9 +104,7 @@ module OVIRT
 
     def http_get(suburl, headers={})
       begin
-        res = rest_client(suburl).get(http_headers(headers))
-        puts "#{res}\n" if ENV['RBOVIRT_LOG_RESPONSE']
-        Nokogiri::XML(res)
+        handle_success(rest_client(suburl).get(http_headers(headers)))
       rescue
         handle_fault $!
       end
@@ -112,9 +112,7 @@ module OVIRT
 
     def http_post(suburl, body, headers={})
       begin
-        res = rest_client(suburl).post(body, http_headers(headers))
-        puts "#{res}\n" if ENV['RBOVIRT_LOG_RESPONSE']
-        Nokogiri::XML(res)
+        handle_success(rest_client(suburl).post(body, http_headers(headers)))
       rescue
         handle_fault $!
       end
@@ -122,9 +120,7 @@ module OVIRT
 
     def http_put(suburl, body, headers={})
       begin
-        res = rest_client(suburl).put(body, http_headers(headers))
-        puts "#{res}\n" if ENV['RBOVIRT_LOG_RESPONSE']
-        Nokogiri::XML(res)
+        handle_success(rest_client(suburl).put(body, http_headers(headers)))
       rescue
         handle_fault $!
       end
@@ -133,9 +129,7 @@ module OVIRT
     def http_delete(suburl)
       begin
         headers = {:accept => 'application/xml'}.merge(auth_header).merge(filter_header)
-        res = rest_client(suburl).delete(headers)
-        puts "#{res}\n" if ENV['RBOVIRT_LOG_RESPONSE']
-        Nokogiri::XML(res)
+        handle_success(rest_client(suburl).delete(headers))
       rescue
         handle_fault $!
       end
@@ -144,7 +138,12 @@ module OVIRT
     def auth_header
       # This is the method for strict_encode64:
       encoded_credentials = ["#{@credentials[:username]}:#{@credentials[:password]}"].pack("m0").gsub(/\n/,'')
-      { :authorization => "Basic " + encoded_credentials }
+      headers = { :authorization => "Basic " + encoded_credentials }
+      if persistent_auth
+        headers[:prefer] = 'persistent-auth'
+        headers[:cookie] = "JSESSIONID=#{jsessionid}"
+      end
+      headers
     end
 
     def rest_client(suburl)
@@ -179,6 +178,12 @@ module OVIRT
         :content_type => 'application/xml',
         :accept => 'application/xml',
       }).merge(headers)
+    end
+
+    def handle_success(response)
+      puts "#{res}\n" if ENV['RBOVIRT_LOG_RESPONSE']
+      @jsessionid ||= response.headers[:jsessionid]
+      Nokogiri::XML(response)
     end
 
     def handle_fault(f)
