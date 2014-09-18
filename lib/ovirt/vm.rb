@@ -71,7 +71,7 @@ module OVIRT
           end
           if opts[:cores]
              cpu {
-               topology( :cores => (opts[:cores] || '1'), :sockets => '1' )
+               topology( :cores => '1', :sockets => (opts[:cores] || '1') )
              }
           end
           # os element must not be sent when template is present (RHBZ 1104235)
