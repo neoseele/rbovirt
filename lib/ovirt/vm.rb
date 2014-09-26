@@ -88,6 +88,10 @@ module OVIRT
               initrd (opts[:os_initrd])
               cmdline (opts[:os_cmdline])
             }
+          else
+            permissions {
+              clone_('true')
+            }
           end
           display_{
             type_(opts[:display][:type])
